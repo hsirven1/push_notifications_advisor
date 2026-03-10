@@ -4,12 +4,18 @@ from pathlib import Path
 
 from app.guardrails.tenant_isolation import TenantIsolationGuard
 from app.guardrails.validator import RequestValidator
-from app.schemas.chat import ChatRequest, ChatResponse, RecommendationPayload
+from app.schemas.chat import (
+    ChatRequest,
+    ChatResponse,
+    PatternRecommendation,
+    PushSuggestion,
+    TimingPattern,
+)
 from app.tools.recommendation_tools import RecommendationTools
 
 
 class ChatService:
-    """Service layer that orchestrates tool calls for recommendation responses."""
+    """Service layer that orchestrates deterministic pattern-based advisory responses."""
 
     def __init__(self, tools: RecommendationTools) -> None:
         self.tools = tools
@@ -19,56 +25,73 @@ class ChatService:
         TenantIsolationGuard.assert_tenant_access(request.tenant_id)
         RequestValidator.validate_chat_request(request)
 
-        similar_events = self.tools.get_similar_events(
-            event_id=request.event_context.event_id,
-            event_type=request.event_context.event_type,
-            market=request.event_context.market,
-            venue_size=request.event_context.venue_size,
+        context = request.project_context
+        similar_projects = self.tools.get_similar_projects(
+            project_name=context.project_name,
+            event_category=context.event_category,
+            country=context.country,
+            language=context.language,
         )
-        similar_event_ids = [event["event_id"] for event in similar_events]
+        project_lookup = {project["project_name"]: project for project in similar_projects}
+        similar_project_names = sorted(project_lookup.keys())
 
-        filters = {"event_ids": similar_event_ids}
-        best_pushes = self.tools.get_best_performing_pushes(filters)
-        best_segments = self.tools.get_best_segments(filters)
-        best_send_times = self.tools.get_best_send_times(filters)
-        best_destinations = self.tools.get_best_destinations(filters)
+        push_history = self.tools.get_push_history(similar_project_names)
+        segments = self.tools.get_common_segments(push_history)
+        redirections = self.tools.get_common_redirections(push_history)
+        timing_patterns = self.tools.get_timing_patterns(push_history, project_lookup)
+        examples = self.tools.get_push_examples(push_history, limit=3)
 
         # Future LLM integration point:
-        # 1) Build deterministic tool-context payload from best_* variables.
-        # 2) Send prompt + context to OpenAI Responses/Chat API.
-        # 3) Parse model output into RecommendationPayload.
-        recommendation = self._build_rule_based_recommendation(
-            best_pushes,
-            best_segments,
-            best_send_times,
-            best_destinations,
-        )
+        # 1) Build deterministic tool-context payload from similar project patterns.
+        # 2) Send prompt + context to OpenAI API with strict tool-only orchestration.
+        # 3) Parse model output into PatternRecommendation.
+        recommendation = self._build_pattern_recommendation(segments, redirections, timing_patterns, examples)
 
         answer = (
-            "Based on similar events, this recommendation favors the highest-CTR content, "
-            "segment, destination, and send window from historical pushes."
+            "Recommendation generated from recurring historical patterns in similar projects "
+            "(event category, country, language)."
         )
         return ChatResponse(answer=answer, recommendation=recommendation)
 
-    def _build_rule_based_recommendation(
+    def _build_pattern_recommendation(
         self,
-        best_pushes: list[dict],
-        best_segments: list[dict],
-        best_send_times: list[dict],
-        best_destinations: list[dict],
-    ) -> RecommendationPayload:
-        top_push = best_pushes[0] if best_pushes else {}
-        top_segment = best_segments[0] if best_segments else {"segment": "ticket_holders"}
-        top_time = best_send_times[0] if best_send_times else {"hour": 17}
-        top_destination = best_destinations[0] if best_destinations else {"destination": "app://event/home"}
+        segments: list[dict],
+        redirections: list[dict],
+        timing_patterns: list[dict],
+        examples: list[dict],
+    ) -> PatternRecommendation:
+        top_segment = segments[0]["segment"] if segments else "ticket_holders"
+        top_redirection = redirections[0]["redirection"] if redirections else "app://project/home"
+        top_timing = timing_patterns[0] if timing_patterns else {
+            "days_before_event_start": 1,
+            "days_before_event_end": 1,
+            "send_weekday": "Thursday",
+            "send_hour_local": 18,
+        }
 
-        return RecommendationPayload(
-            push_content=top_push.get("content", "Event reminder: check your latest event updates."),
-            target_segment=top_segment["segment"],
-            destination=top_destination["destination"],
-            send_window=f"{top_time['hour']:02d}:00-{(top_time['hour'] + 1) % 24:02d}:00 local time",
+        suggestion_models = [PushSuggestion(**example) for example in examples]
+        if not suggestion_models:
+            suggestion_models = [
+                PushSuggestion(
+                    title="Event reminder",
+                    message="Your event is coming up. Open the app for entry details.",
+                    segment=top_segment,
+                    redirection=top_redirection,
+                )
+            ]
+
+        return PatternRecommendation(
+            recommended_segment=top_segment,
+            recommended_redirection=top_redirection,
+            recommended_timing=TimingPattern(
+                days_before_event_start=top_timing["days_before_event_start"],
+                days_before_event_end=top_timing["days_before_event_end"],
+                send_weekday=top_timing["send_weekday"],
+                send_hour_local=top_timing["send_hour_local"],
+            ),
+            suggested_push_examples=suggestion_models[:3],
             rationale=(
-                "Selected from top historical CTR results among similar events "
-                "for content, segment, destination, and send hour."
+                "These choices reflect the most repeated segment, redirection, and send-time pattern "
+                "found in similar historical projects."
             ),
         )

@@ -3,18 +3,18 @@ from typing import Any
 
 
 class PushHistoryRepository(ABC):
-    """Data access contract for historical push-performance lookups."""
+    """Data access contract for historical project + push data lookups."""
 
     @abstractmethod
-    def get_similar_events(
+    def get_similar_projects(
         self,
-        event_id: str | None,
-        event_type: str,
-        market: str,
-        venue_size: int,
+        project_name: str,
+        event_category: str,
+        country: str,
+        language: str,
     ) -> list[dict[str, Any]]:
         raise NotImplementedError
 
     @abstractmethod
-    def get_push_history(self, similar_event_ids: list[str]) -> list[dict[str, Any]]:
+    def get_push_history(self, project_names: list[str]) -> list[dict[str, Any]]:
         raise NotImplementedError

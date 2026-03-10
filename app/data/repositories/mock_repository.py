@@ -9,61 +9,110 @@ class MockPushHistoryRepository(PushHistoryRepository):
     """In-memory mock repository for V1 local development."""
 
     def __init__(self) -> None:
-        self._events = [
-            {"event_id": "evt_100", "event_type": "concert", "market": "NYC", "venue_size": 12000},
-            {"event_id": "evt_101", "event_type": "concert", "market": "NYC", "venue_size": 10000},
-            {"event_id": "evt_102", "event_type": "sports", "market": "SF", "venue_size": 18000},
+        self._projects = [
+            {
+                "project_name": "summer_beats_2025",
+                "event_category": "concert",
+                "country": "US",
+                "start_date": "2025-07-10",
+                "end_date": "2025-07-12",
+                "language": "en",
+            },
+            {
+                "project_name": "city_lights_live",
+                "event_category": "concert",
+                "country": "US",
+                "start_date": "2025-08-20",
+                "end_date": "2025-08-20",
+                "language": "en",
+            },
+            {
+                "project_name": "arena_night_final",
+                "event_category": "sports",
+                "country": "US",
+                "start_date": "2025-09-01",
+                "end_date": "2025-09-01",
+                "language": "en",
+            },
+            {
+                "project_name": "festival_france",
+                "event_category": "concert",
+                "country": "FR",
+                "start_date": "2025-06-14",
+                "end_date": "2025-06-15",
+                "language": "fr",
+            },
         ]
+
         self._pushes = [
             {
-                "event_id": "evt_100",
-                "content": "Doors open in 1 hour. Grab merch early!",
+                "project_name": "summer_beats_2025",
+                "title": "Your show starts tomorrow",
+                "message": "Plan your arrival and open your ticket before heading out.",
+                "redirection": "app://project/summer_beats_2025/tickets",
                 "segment": "ticket_holders",
-                "destination": "app://event/evt_100/merch",
-                "send_hour": 17,
-                "ctr": 0.14,
-                "conversion_rate": 0.05,
+                "datetime_sent": "2025-07-09T18:00:00",
             },
             {
-                "event_id": "evt_101",
-                "content": "Tonight at 8pm—arrive by 7 for faster entry.",
+                "project_name": "summer_beats_2025",
+                "title": "Doors open now",
+                "message": "Entry gates are open. Use the fast-lane QR check-in.",
+                "redirection": "app://project/summer_beats_2025/checkin",
                 "segment": "ticket_holders",
-                "destination": "app://event/evt_101/checkin",
-                "send_hour": 16,
-                "ctr": 0.16,
-                "conversion_rate": 0.06,
+                "datetime_sent": "2025-07-10T16:00:00",
             },
             {
-                "event_id": "evt_102",
-                "content": "Kickoff reminder: parking lots are filling fast.",
-                "segment": "local_fans",
-                "destination": "app://event/evt_102/parking",
-                "send_hour": 14,
-                "ctr": 0.09,
-                "conversion_rate": 0.03,
+                "project_name": "city_lights_live",
+                "title": "Event day reminder",
+                "message": "Your concert is tonight. View entry details in-app.",
+                "redirection": "app://project/city_lights_live/checkin",
+                "segment": "ticket_holders",
+                "datetime_sent": "2025-08-20T11:00:00",
+            },
+            {
+                "project_name": "city_lights_live",
+                "title": "Merch pickup window",
+                "message": "Skip lines by checking merch pickup slots before arrival.",
+                "redirection": "app://project/city_lights_live/merch",
+                "segment": "vip_buyers",
+                "datetime_sent": "2025-08-19T17:00:00",
+            },
+            {
+                "project_name": "festival_france",
+                "title": "Votre billet pour demain",
+                "message": "Consultez votre QR code et les portes d'entrée avant départ.",
+                "redirection": "app://project/festival_france/tickets",
+                "segment": "ticket_holders",
+                "datetime_sent": "2025-06-13T18:00:00",
             },
         ]
 
-    def get_similar_events(
+    def get_similar_projects(
         self,
-        event_id: str | None,
-        event_type: str,
-        market: str,
-        venue_size: int,
+        project_name: str,
+        event_category: str,
+        country: str,
+        language: str,
     ) -> list[dict[str, Any]]:
-        candidate_events = [
-            event
-            for event in self._events
-            if event["event_type"] == event_type and event["market"] == market
+        similar = [
+            project
+            for project in self._projects
+            if project["project_name"] != project_name
+            and project["event_category"] == event_category
+            and project["country"] == country
+            and project["language"] == language
         ]
-        if event_id:
-            candidate_events = [event for event in candidate_events if event["event_id"] != event_id]
 
-        return sorted(
-            candidate_events,
-            key=lambda event: abs(event["venue_size"] - venue_size),
-        )[:5]
+        if similar:
+            return similar
 
-    def get_push_history(self, similar_event_ids: list[str]) -> list[dict[str, Any]]:
-        event_id_set = set(similar_event_ids)
-        return [push for push in self._pushes if push["event_id"] in event_id_set]
+        # Deterministic fallback if exact match is sparse in V1 mock data.
+        return [
+            project
+            for project in self._projects
+            if project["project_name"] != project_name and project["event_category"] == event_category
+        ]
+
+    def get_push_history(self, project_names: list[str]) -> list[dict[str, Any]]:
+        name_set = set(project_names)
+        return [push for push in self._pushes if push["project_name"] in name_set]

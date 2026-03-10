@@ -1,14 +1,41 @@
 # Push Notification Advisor (V1 Foundation)
 
-Minimal FastAPI backend scaffold for a recommendation assistant that advises event teams on what push notification to send.
+Minimal FastAPI backend scaffold for a recommendation assistant that advises event teams what push to prepare using recurring historical patterns from similar projects.
+
+## Real data model used in V1
+
+### Push fields
+- `title`
+- `message`
+- `redirection`
+- `segment`
+- `datetime_sent`
+
+### Project fields
+- `project_name`
+- `event_category`
+- `country`
+- `start_date`
+- `end_date`
+- `language`
+
+V1 intentionally does **not** assume recipient count or any engagement outcome metrics.
 
 ## What V1 does
 - Exposes a `GET /health` endpoint.
-- Exposes a `POST /chat` endpoint (deterministic recommendation stub).
+- Exposes a `POST /chat` endpoint with deterministic advisory output.
 - Uses a service layer to orchestrate tool calls.
-- Uses a data access layer (mock repository) for historical push data.
-- Keeps prompt templates separate from business logic.
-- Includes placeholder guardrails for validation and tenant isolation.
+- Uses a data access layer (mock repository) for historical project/push data.
+- Performs recurring-pattern analysis (frequency-based, deterministic).
+- Computes derived timing fields:
+  - `days_before_event_start`
+  - `days_before_event_end`
+  - `send_weekday`
+  - `send_hour_local`
+- Similarity is primarily based on:
+  - `event_category`
+  - `country`
+  - `language`
 
 ## What V1 does **not** do
 - It does **not** send notifications.
@@ -83,12 +110,14 @@ curl -X POST http://127.0.0.1:8000/chat \
   -H "Content-Type: application/json" \
   -d '{
     "tenant_id": "tenant_demo",
-    "user_message": "What push should we send for tonight?",
-    "event_context": {
-      "event_id": "evt_200",
-      "event_type": "concert",
-      "market": "NYC",
-      "venue_size": 11000
+    "user_message": "What push pattern should we use?",
+    "project_context": {
+      "project_name": "new_york_fall_live",
+      "event_category": "concert",
+      "country": "US",
+      "start_date": "2025-10-12",
+      "end_date": "2025-10-12",
+      "language": "en"
     }
   }'
 ```
@@ -96,12 +125,12 @@ curl -X POST http://127.0.0.1:8000/chat \
 ## Mocked vs real in V1
 
 Keep mocked in V1:
-- `MockPushHistoryRepository` dataset and scoring assumptions.
+- `MockPushHistoryRepository` dataset.
 - Rule-based response builder in `ChatService`.
 - Guardrails are placeholders (basic checks only).
 
 Replace with real components next:
 - Add Postgres-backed repository implementing `PushHistoryRepository`.
 - Add authentication + strict tenant partitioning checks.
-- Plug OpenAI API into `ChatService` at the marked integration point, while keeping tool-calling constrained to backend functions.
-- Add structured observability, retries, and evaluation tests.
+- Plug OpenAI API into `ChatService` at the marked integration point, while keeping orchestration constrained to backend business functions.
+- Add structured observability and evaluation tests.
