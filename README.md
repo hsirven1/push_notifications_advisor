@@ -19,14 +19,14 @@ Minimal FastAPI backend scaffold for a recommendation assistant that advises eve
 - `end_date`
 - `language`
 
-V1 intentionally does **not** assume recipient count, click-through rate, or conversion data.
+V1 intentionally does **not** assume recipient count or any engagement outcome metrics.
 
 ## What V1 does
 - Exposes a `GET /health` endpoint.
 - Exposes a `POST /chat` endpoint with deterministic advisory output.
 - Uses a service layer to orchestrate tool calls.
 - Uses a data access layer (mock repository) for historical project/push data.
-- Performs pattern analysis (not performance scoring).
+- Performs recurring-pattern analysis (frequency-based, deterministic).
 - Computes derived timing fields:
   - `days_before_event_start`
   - `days_before_event_end`
